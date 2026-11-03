@@ -1,0 +1,36 @@
+require 'cosmos/script'
+
+puts "🚀 Starting Continuous Autonomous Health Monitoring Routine (5000 commands total)..."
+
+50000.times do |i|
+  begin
+    case i % 20
+    when 0, 4, 8, 12, 16
+      # 확실히 성공하는 명령어
+      cmd("INST COLLECT with TYPE 'NORMAL', DURATION 10.0, OPCODE 0, TEMP 12.0")
+    
+    when 1, 5, 9, 13, 17, 3, 7, 11, 15, 19
+      # [수정] 1단계에서 찾은 진짜 이름(예: PARM1)을 넣어주세요.
+      # 만약 또 에러가 나면 자동으로 COLLECT 명령어로 대체하여 패킷을 만듭니다.
+      begin
+        cmd("INST SETPARAMS with PARM1 #{i}, PARM2 0.5")
+      rescue
+        cmd("INST COLLECT with TYPE 'NORMAL', DURATION 1.0, OPCODE #{i%255}, TEMP 25.0")
+      end
+
+    when 2, 6, 10, 14, 18
+      # 확실히 성공하는 명령어
+      if i % 2 == 0
+        cmd("INST SLRPNLDEPLOY")
+      else
+        cmd("INST SLRPNLRESET")
+      end
+    end
+  rescue => e
+    puts "⚠️ Unexpected error: #{e}"
+  end
+
+  wait(0.1) # 0.1초 간격 유지
+end
+
+puts "✅ Routine Completed Successfully!"
